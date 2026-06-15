@@ -28,6 +28,7 @@ export class GameScene extends Phaser.Scene {
   private maxRunSpeed: number = 350;
   private isJumping: boolean = false;
   private isRunning: boolean = false;
+  private isWaiting: boolean = true;
   private jumpStartX: number = 150;
   private barHeight: number = 1.2;
   private combo: number = 0;
@@ -233,39 +234,42 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPlayer() {
-    const playerY = GAME_CONFIG.GROUND_Y - 40;
+    const playerY = GAME_CONFIG.GROUND_Y - 50;
 
     const graphics = this.add.graphics();
 
-    graphics.fillStyle(0x42a5f5, 1);
-    graphics.fillRect(-12, -60, 24, 40);
-
-    graphics.fillStyle(0xffcc80, 1);
-    graphics.fillCircle(0, -70, 14);
-
-    graphics.fillStyle(0x1976d2, 1);
-    graphics.fillRect(-10, -50, 20, 30);
-
-    graphics.fillStyle(0x1565c0, 1);
-    graphics.fillRect(-10, -20, 8, 20);
-    graphics.fillRect(2, -20, 8, 20);
-
-    graphics.fillStyle(0xffcc80, 1);
-    graphics.fillRect(-18, -48, 8, 20);
-    graphics.fillRect(10, -48, 8, 20);
+    const ox = 20;
+    const oy = 90;
 
     graphics.fillStyle(0x5d4037, 1);
-    graphics.fillCircle(0, -78, 10);
+    graphics.fillCircle(ox, oy - 78, 10);
+
+    graphics.fillStyle(0xffcc80, 1);
+    graphics.fillCircle(ox, oy - 70, 14);
+
+    graphics.fillStyle(0x42a5f5, 1);
+    graphics.fillRect(ox - 12, oy - 60, 24, 40);
+
+    graphics.fillStyle(0x1976d2, 1);
+    graphics.fillRect(ox - 10, oy - 50, 20, 30);
+
+    graphics.fillStyle(0x1565c0, 1);
+    graphics.fillRect(ox - 10, oy - 20, 8, 20);
+    graphics.fillRect(ox + 2, oy - 20, 8, 20);
+
+    graphics.fillStyle(0xffcc80, 1);
+    graphics.fillRect(ox - 18, oy - 48, 8, 20);
+    graphics.fillRect(ox + 10, oy - 48, 8, 20);
 
     graphics.generateTexture('playerTexture', 40, 100);
     graphics.destroy();
 
     this.player = this.physics.add.sprite(this.jumpStartX, playerY, 'playerTexture');
     this.player.setCollideWorldBounds(false);
-    this.player.setGravityY(DIFFICULTY_CONFIG[this.difficulty].gravity);
+    this.player.setGravityY(0);
     this.player.setBounce(0);
     this.player.setSize(24, 80);
-    this.player.setOffset(0, -10);
+    this.player.setOffset(8, 10);
   }
 
   private createClouds() {
@@ -301,13 +305,21 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.input.keyboard!.on('keydown-RIGHT', () => {
-      if (this.isGameActive && this.isRunning && !this.isJumping) {
+      if (!this.isGameActive || this.isJumping) return;
+      if (this.isWaiting) {
+        this.startRunning();
+      }
+      if (this.isRunning) {
         this.accelerate();
       }
     });
 
     this.input.keyboard!.on('keydown-D', () => {
-      if (this.isGameActive && this.isRunning && !this.isJumping) {
+      if (!this.isGameActive || this.isJumping) return;
+      if (this.isWaiting) {
+        this.startRunning();
+      }
+      if (this.isRunning) {
         this.accelerate();
       }
     });
@@ -327,18 +339,21 @@ export class GameScene extends Phaser.Scene {
 
   private startRound() {
     const config = DIFFICULTY_CONFIG[this.difficulty];
-    this.runSpeed = config.maxRunSpeed * 0.3;
+    this.runSpeed = 0;
     this.isJumping = false;
-    this.isRunning = true;
+    this.isRunning = false;
+    this.isWaiting = true;
     this.hasPassedBar = false;
     this.hasHitBar = false;
     this.isLanded = false;
     this.isGameActive = true;
     this.perfectTiming = false;
     this.maxSpeedReached = false;
+    this.runAnimFrame = 0;
+    this.runAnimTimer = 0;
 
     this.player.setX(this.jumpStartX);
-    this.player.setY(GAME_CONFIG.GROUND_Y - 40);
+    this.player.setY(GAME_CONFIG.GROUND_Y - 50);
     this.player.setVelocityX(0);
     this.player.setVelocityY(0);
     this.player.setGravityY(0);
@@ -353,6 +368,19 @@ export class GameScene extends Phaser.Scene {
     if (this.onComboUpdate) {
       this.onComboUpdate(this.combo);
     }
+    if (this.onSpeedUpdate) {
+      this.onSpeedUpdate(0, this.maxRunSpeed);
+    }
+    if (this.onJumpZoneEnter) {
+      this.onJumpZoneEnter(false);
+    }
+  }
+
+  private startRunning() {
+    this.isWaiting = false;
+    this.isRunning = true;
+    const config = DIFFICULTY_CONFIG[this.difficulty];
+    this.runSpeed = config.maxRunSpeed * 0.3;
     if (this.onSpeedUpdate) {
       this.onSpeedUpdate(this.runSpeed, this.maxRunSpeed);
     }
@@ -378,7 +406,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryJump() {
-    if (!this.isGameActive || this.isJumping || !this.isRunning) return;
+    if (!this.isGameActive || this.isJumping) return;
+
+    if (this.isWaiting) {
+      this.startRunning();
+      return;
+    }
+
+    if (!this.isRunning) return;
 
     const playerX = this.player.x;
     const inJumpZone = playerX >= JUMP_ZONE_START && playerX <= JUMP_ZONE_END;
@@ -455,7 +490,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isJumping) {
       this.checkBarCollision();
 
-      if (this.player.y >= GAME_CONFIG.GROUND_Y - 40 && !this.isLanded) {
+      if (this.player.y >= GAME_CONFIG.GROUND_Y - 50 && !this.isLanded) {
         this.land();
       }
     }
@@ -476,8 +511,8 @@ export class GameScene extends Phaser.Scene {
   private checkBarCollision() {
     const playerTop = this.player.y - 40;
     const playerBottom = this.player.y + 40;
-    const playerLeft = this.player.x - 12;
-    const playerRight = this.player.x + 12;
+    const playerLeft = this.player.x - 20;
+    const playerRight = this.player.x + 20;
 
     const barY = GAME_CONFIG.GROUND_Y - this.barHeight * PIXELS_PER_METER;
     const barLeft = BAR_X - 110;
@@ -513,7 +548,7 @@ export class GameScene extends Phaser.Scene {
 
   private land() {
     this.isLanded = true;
-    this.player.setY(GAME_CONFIG.GROUND_Y - 40);
+    this.player.setY(GAME_CONFIG.GROUND_Y - 50);
     this.player.setVelocityX(0);
     this.player.setVelocityY(0);
     this.player.setGravityY(0);

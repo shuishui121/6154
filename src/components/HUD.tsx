@@ -15,6 +15,7 @@ export default function HUD() {
 
   const speedPercent = Math.min(runSpeed, 100);
   const isHighSpeed = speedPercent > 80;
+  const isWaiting = runSpeed === 0;
 
   return (
     <div className="absolute top-0 left-0 right-0 p-4 pointer-events-none z-40">
@@ -82,7 +83,16 @@ export default function HUD() {
         </div>
       </div>
 
-      {isInJumpZone && (
+      {isWaiting && !isInJumpZone && (
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+          <div className="text-3xl font-bold text-white animate-pulse drop-shadow-lg text-center">
+            <div>🏃‍♂️ 按 → 键开始助跑！</div>
+            <div className="text-lg text-white/80 mt-2">连按加速 · 空格起跳</div>
+          </div>
+        </div>
+      )}
+
+      {isInJumpZone && !isWaiting && (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
           <div className="text-4xl font-bold text-yellow-400 animate-pulse drop-shadow-lg">
             ⚡ 起跳区！
