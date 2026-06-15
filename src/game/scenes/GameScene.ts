@@ -42,6 +42,36 @@ export class GameScene extends Phaser.Scene {
   private runAnimFrame: number = 0;
   private runAnimTimer: number = 0;
 
+  private isPaused: boolean = false;
+  private pausedPhysicsState: {
+    playerX: number;
+    playerY: number;
+    velocityX: number;
+    velocityY: number;
+    accelerationX: number;
+    accelerationY: number;
+    allowGravity: boolean;
+    gravityY: number;
+    isRunning: boolean;
+    isJumping: boolean;
+    isWaiting: boolean;
+    runSpeed: number;
+    playerAngle: number;
+    playerScaleX: number;
+    playerScaleY: number;
+    blocked: boolean;
+    touchingUp: boolean;
+    touchingDown: boolean;
+    touchingLeft: boolean;
+    touchingRight: boolean;
+    wasTouchingUp: boolean;
+    wasTouchingDown: boolean;
+    wasTouchingLeft: boolean;
+    wasTouchingRight: boolean;
+  } | null = null;
+  private timeScaleBeforePause: number = 1;
+  private inputEnabled: boolean = true;
+
   private accelerationKey!: Phaser.Input.Keyboard.Key;
   private jumpKey!: Phaser.Input.Keyboard.Key;
   private spaceKey!: Phaser.Input.Keyboard.Key;
@@ -317,7 +347,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.input.keyboard!.on('keydown-RIGHT', () => {
-      if (!this.isGameActive || this.isJumping) return;
+      if (!this.inputEnabled || !this.isGameActive || this.isJumping || this.isPaused) return;
       if (this.isWaiting) {
         this.startRunning();
       }
@@ -327,7 +357,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.keyboard!.on('keydown-D', () => {
-      if (!this.isGameActive || this.isJumping) return;
+      if (!this.inputEnabled || !this.isGameActive || this.isJumping || this.isPaused) return;
       if (this.isWaiting) {
         this.startRunning();
       }
@@ -337,10 +367,12 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.input.keyboard!.on('keydown-SPACE', () => {
+      if (!this.inputEnabled || this.isPaused) return;
       this.tryJump();
     });
 
     this.input.keyboard!.on('keydown-UP', () => {
+      if (!this.inputEnabled || this.isPaused) return;
       this.tryJump();
     });
   }
@@ -358,6 +390,24 @@ export class GameScene extends Phaser.Scene {
 
   private startRound() {
     const config = DIFFICULTY_CONFIG[this.difficulty];
+
+    this.isPaused = false;
+    this.pausedPhysicsState = null;
+    this.timeScaleBeforePause = 1;
+    this.time.timeScale = 1;
+    this.inputEnabled = true;
+
+    if (this.physics.world.isPaused) {
+      this.physics.world.resume();
+    }
+
+    this.tweens.killAll();
+    this.time.removeAllEvents();
+
+    if (this.input.keyboard) {
+      this.input.keyboard.enabled = true;
+    }
+
     this.runSpeed = 0;
     this.isJumping = false;
     this.isRunning = false;
@@ -473,7 +523,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    if (!this.isGameActive) return;
+    if (!this.isGameActive || this.isPaused) return;
 
     this.updateClouds(delta);
 
@@ -607,13 +657,123 @@ export class GameScene extends Phaser.Scene {
 
   private failJump(_reason: string) {
     this.isGameActive = false;
+    this.isRunning = false;
+    this.isJumping = false;
+
+    this.tweens.killAll();
+    this.time.removeAllEvents();
 
     if (this.onGameOver) {
       this.onGameOver(this.barHeight, this.perfectTiming, this.maxSpeedReached);
     }
   }
 
+  public pauseGame() {
+    if (this.isPaused) return;
+
+    this.isPaused = true;
+    this.inputEnabled = false;
+
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+    this.pausedPhysicsState = {
+      playerX: this.player.x,
+      playerY: this.player.y,
+      velocityX: playerBody.velocity.x,
+      velocityY: playerBody.velocity.y,
+      accelerationX: playerBody.acceleration.x,
+      accelerationY: playerBody.acceleration.y,
+      allowGravity: playerBody.allowGravity,
+      gravityY: this.physics.world.gravity.y,
+      isRunning: this.isRunning,
+      isJumping: this.isJumping,
+      isWaiting: this.isWaiting,
+      runSpeed: this.runSpeed,
+      playerAngle: this.player.angle,
+      playerScaleX: this.player.scaleX,
+      playerScaleY: this.player.scaleY,
+      blocked: playerBody.blocked.none === false,
+      touchingUp: playerBody.touching.up,
+      touchingDown: playerBody.touching.down,
+      touchingLeft: playerBody.touching.left,
+      touchingRight: playerBody.touching.right,
+      wasTouchingUp: playerBody.wasTouching.up,
+      wasTouchingDown: playerBody.wasTouching.down,
+      wasTouchingLeft: playerBody.wasTouching.left,
+      wasTouchingRight: playerBody.wasTouching.right,
+    };
+
+    this.physics.world.pause();
+
+    this.timeScaleBeforePause = this.time.timeScale;
+    this.time.timeScale = 0;
+
+    this.tweens.getTweens().forEach((tween) => {
+      if (tween.isPlaying()) {
+        tween.pause();
+      }
+    });
+
+    this.input.keyboard!.enabled = false;
+  }
+
+  public resumeGame() {
+    if (!this.isPaused || !this.pausedPhysicsState) return;
+
+    const state = this.pausedPhysicsState;
+
+    this.time.timeScale = this.timeScaleBeforePause;
+
+    this.physics.world.resume();
+
+    this.player.setX(state.playerX);
+    this.player.setY(state.playerY);
+    this.player.setVelocity(state.velocityX, state.velocityY);
+    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+    playerBody.acceleration.set(state.accelerationX, state.accelerationY);
+    playerBody.setAllowGravity(state.allowGravity);
+    this.physics.world.gravity.y = state.gravityY;
+    this.player.angle = state.playerAngle;
+    this.player.setScale(state.playerScaleX, state.playerScaleY);
+
+    playerBody.blocked.up = false;
+    playerBody.blocked.down = false;
+    playerBody.blocked.left = false;
+    playerBody.blocked.right = false;
+    playerBody.touching.up = state.touchingUp;
+    playerBody.touching.down = state.touchingDown;
+    playerBody.touching.left = state.touchingLeft;
+    playerBody.touching.right = state.touchingRight;
+    playerBody.wasTouching.up = state.wasTouchingUp;
+    playerBody.wasTouching.down = state.wasTouchingDown;
+    playerBody.wasTouching.left = state.wasTouchingLeft;
+    playerBody.wasTouching.right = state.wasTouchingRight;
+
+    this.isRunning = state.isRunning;
+    this.isJumping = state.isJumping;
+    this.isWaiting = state.isWaiting;
+    this.runSpeed = state.runSpeed;
+
+    this.tweens.getTweens().forEach((tween) => {
+      if (tween.isPaused()) {
+        tween.resume();
+      }
+    });
+
+    this.input.keyboard!.enabled = true;
+    this.inputEnabled = true;
+
+    this.pausedPhysicsState = null;
+    this.isPaused = false;
+  }
+
   public restartGame() {
+    if (this.isPaused) {
+      this.resumeGame();
+    }
+
+    this.tweens.killAll();
+    this.time.removeAllEvents();
+
     this.combo = 0;
     const config = DIFFICULTY_CONFIG[this.difficulty];
     this.barHeight = config.initialHeight;

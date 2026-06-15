@@ -66,6 +66,7 @@ export default function App() {
             key={difficulty}
             difficulty={difficulty}
             isPlaying={isPlaying}
+            status={status}
           />
         )}
 

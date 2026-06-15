@@ -15,14 +15,16 @@ import {
 interface GameProps {
   difficulty: Difficulty;
   isPlaying: boolean;
+  status: string;
 }
 
-export default function Game({ difficulty, isPlaying }: GameProps) {
+export default function Game({ difficulty, isPlaying, status }: GameProps) {
   const gameContainerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const gameSceneRef = useRef<GameScene | null>(null);
   const hasFirstJumped = useRef(false);
   const isInitialized = useRef(false);
+  const prevStatusRef = useRef<string>('menu');
 
   const {
     setRunSpeed,
@@ -176,10 +178,18 @@ export default function Game({ difficulty, isPlaying }: GameProps) {
 
     return () => {
       if (gameRef.current && !isPlaying) {
+        if (gameSceneRef.current) {
+          try {
+            gameSceneRef.current.resumeGame();
+          } catch (e) {
+            // 忽略恢复时的错误，因为游戏即将被销毁
+          }
+        }
         gameRef.current.destroy(true);
         gameRef.current = null;
         gameSceneRef.current = null;
         isInitialized.current = false;
+        prevStatusRef.current = 'menu';
       }
     };
   }, [isPlaying, initGame]);
@@ -189,6 +199,27 @@ export default function Game({ difficulty, isPlaying }: GameProps) {
       gameSceneRef.current.setDifficulty(difficulty);
     }
   }, [difficulty]);
+
+  useEffect(() => {
+    if (!gameSceneRef.current || !isInitialized.current) {
+      prevStatusRef.current = status;
+      return;
+    }
+
+    const prevStatus = prevStatusRef.current;
+
+    if (prevStatus === 'playing' && status === 'paused') {
+      gameSceneRef.current.pauseGame();
+    } else if (prevStatus === 'paused' && status === 'playing') {
+      gameSceneRef.current.resumeGame();
+    } else if (prevStatus === 'paused' && status === 'gameover') {
+      gameSceneRef.current.resumeGame();
+    } else if (prevStatus === 'paused' && status === 'menu') {
+      gameSceneRef.current.resumeGame();
+    }
+
+    prevStatusRef.current = status;
+  }, [status]);
 
   const restartGame = useCallback(() => {
     hasFirstJumped.current = false;
