@@ -19,7 +19,7 @@ export class GameScene extends Phaser.Scene {
   private bar!: Phaser.GameObjects.Rectangle;
   private leftPole!: Phaser.GameObjects.Rectangle;
   private rightPole!: Phaser.GameObjects.Rectangle;
-  private ground!: Phaser.GameObjects.Rectangle;
+  private ground!: Phaser.Physics.Arcade.StaticBody;
   private track!: Phaser.GameObjects.Rectangle;
   private jumpZone!: Phaser.GameObjects.Rectangle;
   private clouds: Phaser.GameObjects.Image[] = [];
@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createGround() {
-    this.ground = this.add.rectangle(
+    const groundGraphics = this.add.rectangle(
       GAME_CONFIG.WIDTH / 2,
       GAME_CONFIG.GROUND_Y + (GAME_CONFIG.HEIGHT - GAME_CONFIG.GROUND_Y) / 2,
       GAME_CONFIG.WIDTH,
@@ -127,6 +127,18 @@ export class GameScene extends Phaser.Scene {
       Phaser.Display.Color.HexStringToColor(COLORS.grassDark).color
     );
     grassTop.setOrigin(0.5, 0);
+
+    const groundCollider = this.add.rectangle(
+      GAME_CONFIG.WIDTH / 2,
+      GAME_CONFIG.GROUND_Y,
+      GAME_CONFIG.WIDTH,
+      10,
+      0x000000,
+      0
+    );
+    groundCollider.setOrigin(0.5, 0);
+    this.physics.add.existing(groundCollider, true);
+    this.ground = groundCollider.body as Phaser.Physics.Arcade.StaticBody;
   }
 
   private createTrack() {
@@ -266,7 +278,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player = this.physics.add.sprite(this.jumpStartX, playerY, 'playerTexture');
     this.player.setCollideWorldBounds(false);
-    this.player.setGravityY(0);
+    (this.player.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.player.setBounce(0);
     this.player.setSize(24, 80);
     this.player.setOffset(8, 10);
@@ -335,6 +347,13 @@ export class GameScene extends Phaser.Scene {
 
   private setupPhysics() {
     this.physics.world.gravity.y = DIFFICULTY_CONFIG[this.difficulty].gravity;
+    this.physics.add.collider(this.player, this.ground.gameObject, this.onPlayerLand, null, this);
+  }
+
+  private onPlayerLand() {
+    if (this.isJumping && !this.isLanded) {
+      this.land();
+    }
   }
 
   private startRound() {
@@ -356,7 +375,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setY(GAME_CONFIG.GROUND_Y - 50);
     this.player.setVelocityX(0);
     this.player.setVelocityY(0);
-    this.player.setGravityY(0);
+    (this.player.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.player.angle = 0;
     this.player.setScale(1, 1);
 
@@ -441,7 +460,7 @@ export class GameScene extends Phaser.Scene {
 
     this.player.setVelocityX(this.runSpeed * 0.7);
     this.player.setVelocityY(-adjustedJumpVelocity);
-    this.player.setGravityY(config.gravity);
+    (this.player.body as Phaser.Physics.Arcade.Body).setAllowGravity(true);
     this.player.setScale(1, 1);
 
     this.tweens.add({
@@ -551,7 +570,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setY(GAME_CONFIG.GROUND_Y - 50);
     this.player.setVelocityX(0);
     this.player.setVelocityY(0);
-    this.player.setGravityY(0);
+    (this.player.body as Phaser.Physics.Arcade.Body).setAllowGravity(false);
     this.player.angle = 0;
     this.player.setScale(1, 1);
 
